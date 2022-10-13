@@ -1,0 +1,219 @@
+---
+title: "index"
+author: "Anne Goj"
+date: "2022-10-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE,warning=FALSE}
+library(tidyverse)
+library(magrittr)
+library(knitr)
+library(kableExtra)
+library(sparkline)
+library(reactable)
+library(table1)
+library(lubridate)
+library(reactablefmtr)
+library(htmltools)
+library(flextable)
+```
+## Homework 4 Tables
+
+## Data Source
+https://www.gsa.gov/travel/plan-book/per-diem-rates/per-diem-files
+
+## Summary
+The U.S. General Services Administration sets rates for travel reimbursement annually for both lodging and for meals and incidental expenses. In 2023, the standard reimbursement for lodging will be \$98 and the standard reimbursement for meals will be \$59.  Typically a large metropolis or a popular tourist destination will have its own per Diem that may vary depending on the season.
+
+I have taken the per diem files created tables from multiple years to show what the rates would be during a holiday in the Spring (St. Patrick's Day), the Summer (Independence Day) and Fall (Thanksgiving Day). I create a reactable table that is filterable by year to show what the most expensive destinations may be.
+
+## Data Manipulation
+
+I upload the data and reformat the dollar columns as numbers. I calculate the difference between the destination's lodging rate and the standard US lodging rate.  For destinations without seasonal rate dependence, I set the season to start on January 1st and end on December 31. I use the lubridate package to convert the dates for seasonal rates into time intervals that the holidays may fall into.  
+
+To compare data from different years, I move these data manipulations into a function.  I run the function on data from 2020-2022 and combine the rows into a large tibble.
+```{r}
+# get the standard rates for continental US over all years
+standardrates <- read.csv("conusSTANDARDrates.csv",header=TRUE)
+
+perdiem2023 <- read.csv("FY2023_PerDiemMasterRatesFile.csv",header=TRUE,skip=2)
+
+newnames <- c("index","State","Destination","County","Season.Start","Season.End","Lodging","MandIE") 
+names(perdiem2023) <- newnames
+
+perdiem2023 %<>% mutate(Lodging=as.integer(str_remove(Lodging,"[ $]"))) %>% 
+  mutate(MandIE=as.integer(str_remove(MandIE,"[ $]"))) %>% select(-index) %>% 
+  mutate(State=as.factor(State)) 
+USAdefaultLodging <- (standardrates %>% filter(year==2023))$standardLodging
+USAdefaultMandIE <- (standardrates %>% filter(year==2023))$standardMIE
+perdiem2023 %<>% mutate(LdiffUSDefault=Lodging-USAdefaultLodging)
+perdiem2023 %<>% mutate(MdiffUSDefault=MandIE-USAdefaultMandIE)
+perdiem2023 %>% head(2)
+```
+
+```{r}
+perdiem2023%<>% mutate(Season.Start=if_else(Season.Start=="","January 1",Season.Start))
+perdiem2023%<>% mutate(Season.End=if_else(Season.End=="","December 31",Season.End))
+
+perdiem2023%<>% mutate(Season.End=mdy(paste(Season.End," 2023")))
+perdiem2023%<>% mutate(Season.Start=mdy(paste(Season.Start," 2023")))
+perdiem2023 %<>% mutate(Season=interval(Season.Start,Season.End))
+
+baddates1 <- perdiem2023 %>% filter(Season<0)
+baddates2 <- perdiem2023 %>% filter(Season<0)
+perdiem2023 %<>% filter(Season>0)
+
+baddates1 %<>% mutate(Season.End=mdy("December 31 2023")) %>%  mutate(Season=interval(Season.Start,Season.End))
+baddates2 %<>% mutate(Season.Start=mdy("January 1 2023")) %>%  mutate(Season=interval(Season.Start,Season.End))
+
+PD2023 <- bind_rows(perdiem2023,baddates1,baddates2) %>% arrange(State,Destination,County,Season.Start)
+
+PD2023 %<>% mutate(Holiday="NOT")
+dfID <- PD2023 %>%   mutate(Holiday=if_else(ymd("2023-07-4")%within%Season,"Independence Day",Holiday)) %>% dplyr::filter(Holiday!="NOT")
+dfTD <- PD2023 %>%   mutate(Holiday=if_else(ymd("2023-11-24")%within%Season,"Thanksgiving Day",Holiday)) %>% dplyr::filter(Holiday!="NOT")
+dfPD <- PD2023 %>%   mutate(Holiday=if_else(ymd("2023-3-17")%within%Season,"St. Patricks Day",Holiday)) %>% dplyr::filter(Holiday!="NOT")
+PD2023 <- bind_rows(dfID,dfTD,dfPD) %>% arrange(State,Destination,County,Season.Start)
+PD2023 %<>% mutate(Holiday=as.factor(Holiday))
+PD2023 %<>%mutate(year=2023) 
+```
+
+To compare data from different years, I move these data manipulations into a function.
+```{r}
+
+convert_PD_df <- function(mydf,myyear){
+ newnames <- c("index","State","Destination","County","Season.Start","Season.End","Lodging","MandIE") 
+names(mydf) <- newnames
+
+mydf %<>% mutate(Lodging=as.integer(str_remove(Lodging,"[ $]"))) %>% 
+  mutate(MandIE=as.integer(str_remove(MandIE,"[ $]"))) %>% select(-index) %>% 
+  mutate(State=as.factor(State)) 
+USAdefaultLodging <- (standardrates %>% filter(year==myyear))$standardLodging
+USAdefaultMandIE <- (standardrates %>% filter(year==myyear))$standardMIE
+mydf %<>% mutate(LdiffUSDefault=Lodging-USAdefaultLodging)
+mydf %<>% mutate(MdiffUSDefault=MandIE-USAdefaultMandIE)
+mydf %>% head(2)
+mydf%<>% mutate(Season.Start=if_else(Season.Start=="","January 1",Season.Start))
+mydf%<>% mutate(Season.End=if_else(Season.End=="","December 31",Season.End))
+
+mydf%<>% mutate(Season.End=mdy(paste(Season.End,myyear)))
+mydf%<>% mutate(Season.Start=mdy(paste(Season.Start,myyear)))
+mydf %<>% mutate(Season=interval(Season.Start,Season.End))
+
+baddates1 <- mydf %>% filter(Season<0)
+baddates2 <- mydf %>% filter(Season<0)
+mydf %<>% filter(Season>0)
+
+yearend=paste("December 31",myyear)
+yearstart=paste("January 1",myyear)
+baddates1 %<>% mutate(Season.End=mdy(yearend)) %>%  
+  mutate(Season=interval(Season.Start,Season.End))
+baddates2 %<>% mutate(Season.Start=mdy(yearstart)) %>%
+  mutate(Season=interval(Season.Start,Season.End))
+mynewPD <- bind_rows(mydf,baddates1,baddates2) %>%
+  arrange(State,Destination,County,Season.Start)
+
+mynewPD %<>% mutate(Holiday="NOT")
+july4=paste("July 4",myyear)
+thankgiv <- paste("November 24",myyear)
+stpaddy <- paste("March 17",myyear)
+dfID <- mynewPD %>%   mutate(Holiday=if_else(mdy(july4)%within%Season,"
+                                             Independence Day",Holiday)) %>%
+  dplyr::filter(Holiday!="NOT")
+dfTD <- mynewPD %>%   mutate(Holiday=if_else(mdy(thankgiv)%within%Season,
+                                             "Thanksgiving Day",Holiday)) %>%
+  dplyr::filter(Holiday!="NOT")
+dfPD <- mynewPD %>%   mutate(Holiday=if_else(mdy(stpaddy)%within%Season,
+                                             "St. Patricks Day",Holiday)) %>%
+  dplyr::filter(Holiday!="NOT")
+mynewPD <- bind_rows(dfID,dfTD,dfPD) %>% 
+  arrange(State,Destination,County,Season.Start)
+mynewPD %<>% mutate(Holiday=as.factor(Holiday))
+mynewPD %<>%mutate(year=as.integer(myyear)) 
+return(mynewPD)
+}
+
+perdiem2022 <- read.csv("FY2022_PerDiemMasterRatesFile.csv",header=TRUE,skip=2)
+perdiem2021 <- read.csv("FY2021_PerDiemMasterRatesFile.csv",header=TRUE,skip=2)
+perdiem2020 <- read.csv("FY2020_PerDiemMasterRatesFile.csv",header=TRUE,skip=2)
+
+PD_allyears <- bind_rows(PD2023,convert_PD_df(perdiem2022,2022),
+                         convert_PD_df(perdiem2021,2021),
+                         convert_PD_df(perdiem2020,2020))
+```
+
+
+```{r}
+PD_allyears %>% filter(Destination=="Fresno",Holiday=="Independence Day")
+```
+
+
+## Static Tables
+I use table1 package to compare Lodging and Meals rates across different holidays for the 2023 data set.
+Then I create a table comparing Summer and Fall rates between New York and Florida for the 2023 set.
+```{r}
+label(PD2023$MandIE) <- "Meals and Incidentals,USD"
+label(PD2023$Lodging) <- "Lodging,USD"
+tableA <- table1(~Lodging+MandIE|Holiday, data=PD2023 ,topclass="Rtable1-shade")
+tableA
+tableB <- table1(~Lodging+MandIE|Holiday*State, data=PD2023 %>% filter(State%in%c("FL","NY"),Holiday%in%c("Independence Day","Thanksgiving Day")))
+tableB
+```
+
+
+## Reactable Table
+I created a Reactable table to show the most expensive Destinations to travel. I aggregate to display the maximum lodging and the mean meals expenses for each for each state by year. I allow selection of the data by year. As you drill down into the state's destinations, there is a bar chart to show how much more expensive they would be compared to the standard lodging. 
+
+```{r}
+reactable_table <-  PD_allyears %>%group_by(State,year) %>% 
+  select(State, Destination, Lodging,LdiffUSDefault,MandIE, Holiday,year) %>%
+  reactable(groupBy = c("year","State"),
+            paginateSubRows = TRUE,
+            style = list(fontSize = "1rem"),columns = list(
+    year=colDef(name="Year",filterable=TRUE,
+                filterInput = function(values, name) {
+        tags$select(
+          # Set to undefined to clear the filter
+          onchange = sprintf("Reactable.setFilter('year-select',
+                             '%s', event.target.value || undefined)", name),
+          # "All" has an empty value to clear the filter, and is the default option
+          tags$option(value = "", "All"),
+          lapply(unique(values), tags$option),
+          "aria-label" = sprintf("Filter %s", name),
+          style = "width: 100%; height: 28px;"
+        )
+      }
+                ),
+    Lodging = colDef(aggregate = "max",
+                     format = list(cell=colFormat(currency = "USD"),
+                                   aggregated = colFormat(prefix = "maximum =",
+                                                          currency = "USD")),
+                     name = "Lodging"),
+    LdiffUSDefault = colDef(name = "Over Standard Lodging Rate",
+                            cell = data_bars(., fill_color = c("red","black"),
+                                             fill_gradient = TRUE,
+                                             number_fmt=scales::number_format(accuracy=1)
+                                             )),
+    MandIE = colDef(aggregate = "mean",
+                    format = list(cell=colFormat(currency = "USD"),
+                                  aggregated = colFormat(prefix = "mean =",
+                                                         currency = "USD")),
+                    name = "Meals & Incidentals")
+    ),
+    defaultSorted = "Lodging",
+    defaultSortOrder = "desc",
+    theme=clean(),
+    defaultPageSize = 8,
+    elementId = "year-select")  %>%   add_title("Per Diem Travel Rates ") %>% 
+  add_subtitle("as issued by the US Goverment for various holidays.") %>% 
+  add_source("https://www.gsa.gov/travel/plan-book/per-diem-rates/per-diem-files")
+  
+reactable_table
+```
+
+
+

@@ -173,6 +173,7 @@ reactable_table <-  PD_allyears %>%group_by(State,year) %>%
   select(State, Destination, Lodging,LdiffUSDefault,MandIE, Holiday,year) %>%
   reactable(groupBy = c("year","State"),
             paginateSubRows = TRUE,
+            filterable = TRUE,
             style = list(fontSize = "1rem"),columns = list(
     year=colDef(name="Year",filterable=TRUE,
                 filterInput = function(values, name) {
@@ -188,17 +189,17 @@ reactable_table <-  PD_allyears %>%group_by(State,year) %>%
         )
       }
                 ),
-    Lodging = colDef(aggregate = "max",
+    Lodging = colDef(aggregate = "max",filterable = FALSE,
                      format = list(cell=colFormat(currency = "USD"),
                                    aggregated = colFormat(prefix = "maximum =",
                                                           currency = "USD")),
                      name = "Lodging"),
-    LdiffUSDefault = colDef(name = "Over Standard Lodging Rate",
+    LdiffUSDefault = colDef(name = "Over Standard Lodging Rate",filterable = FALSE,
                             cell = data_bars(., fill_color = c("red","black"),
                                              fill_gradient = TRUE,
                                              number_fmt=scales::number_format(accuracy=1)
                                              )),
-    MandIE = colDef(aggregate = "mean",
+    MandIE = colDef(aggregate = "mean",filterable = FALSE,
                     format = list(cell=colFormat(currency = "USD"),
                                   aggregated = colFormat(prefix = "mean =",
                                                          currency = "USD")),
@@ -207,7 +208,7 @@ reactable_table <-  PD_allyears %>%group_by(State,year) %>%
     defaultSorted = "Lodging",
     defaultSortOrder = "desc",
     theme=clean(),
-    defaultPageSize = 8,
+    defaultPageSize = 15,
     elementId = "year-select")  %>%   add_title("Per Diem Travel Rates ") %>% 
   add_subtitle("as issued by the US Goverment for various holidays.") %>% 
   add_source("https://www.gsa.gov/travel/plan-book/per-diem-rates/per-diem-files")
